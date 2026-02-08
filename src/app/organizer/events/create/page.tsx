@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
 import { fetchJson } from "@/lib/utils";
+import { useAlert } from "@/components/alert-provider";
 
 interface Faculty {
   id: string;
@@ -49,6 +50,7 @@ export default function OrganizerCreateEventPage() {
   const [loading, setLoading] = useState(false);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const { notify } = useAlert();
   const [form, setForm] = useState<EventForm>({
     title: "",
     description: "",
@@ -70,7 +72,11 @@ export default function OrganizerCreateEventPage() {
         const data = await fetchJson<Faculty[]>("/faculties");
         setFaculties(data);
       } catch {
-        // Ignore
+        notify({
+          title: "No se pudieron cargar las facultades",
+          message: "Intenta recargar la página.",
+          variant: "error",
+        });
       }
     };
 
@@ -79,7 +85,11 @@ export default function OrganizerCreateEventPage() {
         const data = await fetchJson<Speaker[]>("/speakers");
         setSpeakers(data);
       } catch {
-        // Ignore
+        notify({
+          title: "No se pudieron cargar los ponentes",
+          message: "Intenta recargar la página.",
+          variant: "error",
+        });
       }
     };
 
@@ -90,7 +100,11 @@ export default function OrganizerCreateEventPage() {
   const handleSubmit = async () => {
     const user = JSON.parse(localStorage.getItem("acadevent_user") || "{}");
     if (!user.id) {
-      alert("Usuario no encontrado");
+      notify({
+        title: "Sesión no encontrada",
+        message: "Vuelve a iniciar sesión para crear el evento.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -119,9 +133,18 @@ export default function OrganizerCreateEventPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      notify({
+        title: "Evento creado",
+        message: "El evento se registró correctamente.",
+        variant: "success",
+      });
       router.push("/organizer/dashboard");
     } catch (error) {
-      alert("Error creando evento");
+      notify({
+        title: "No se pudo crear el evento",
+        message: "Revisa la información e intenta nuevamente.",
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }

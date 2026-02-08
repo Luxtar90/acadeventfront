@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { fetchJson } from "@/lib/utils";
+import { useAlert } from "@/components/alert-provider";
 
 interface Career {
   id: string;
@@ -51,7 +52,10 @@ export default function AdminCareersPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Career | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { notify } = useAlert();
   const [form, setForm] = useState({ name: "", facultyId: "" });
+  const [search, setSearch] = useState("");
+  const [facultyFilter, setFacultyFilter] = useState("all");
 
   useEffect(() => {
     loadData();
@@ -66,7 +70,11 @@ export default function AdminCareersPage() {
       setCareers(careersData);
       setFaculties(facultiesData);
     } catch (error) {
-      console.error("Error loading data:", error);
+      notify({
+        title: "No se pudieron cargar los datos",
+        message: "Intenta recargar la página.",
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -74,7 +82,11 @@ export default function AdminCareersPage() {
 
   const handleCreateCareer = async () => {
     if (!form.name.trim()) {
-      alert("Por favor complete el nombre de la carrera");
+      notify({
+        title: "Datos incompletos",
+        message: "Ingresa el nombre de la carrera.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -92,8 +104,17 @@ export default function AdminCareersPage() {
       setDialogOpen(false);
       setForm({ name: "", facultyId: "none" });
       loadData();
+      notify({
+        title: "Carrera creada",
+        message: "El registro se guardó correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error creando carrera");
+      notify({
+        title: "No se pudo crear la carrera",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     } finally {
       setCreating(false);
     }
@@ -101,7 +122,11 @@ export default function AdminCareersPage() {
 
   const handleEditCareer = async () => {
     if (!editing || !form.name.trim()) {
-      alert("Por favor complete el nombre de la carrera");
+      notify({
+        title: "Datos incompletos",
+        message: "Ingresa el nombre de la carrera.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -120,8 +145,17 @@ export default function AdminCareersPage() {
       setEditing(null);
       setForm({ name: "", facultyId: "none" });
       loadData();
+      notify({
+        title: "Carrera actualizada",
+        message: "Los cambios se guardaron correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error actualizando carrera");
+      notify({
+        title: "No se pudo actualizar la carrera",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     } finally {
       setCreating(false);
     }
@@ -135,8 +169,17 @@ export default function AdminCareersPage() {
         body: JSON.stringify({ facultyId }),
       });
       loadData();
+      notify({
+        title: "Facultad actualizada",
+        message: "La relación se guardó correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error actualizando facultad");
+      notify({
+        title: "No se pudo actualizar la facultad",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     }
   };
 
@@ -150,8 +193,17 @@ export default function AdminCareersPage() {
         method: "DELETE",
       });
       loadData();
+      notify({
+        title: "Carrera eliminada",
+        message: "El registro fue eliminado correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error eliminando carrera");
+      notify({
+        title: "No se pudo eliminar la carrera",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     }
   };
 
@@ -170,13 +222,24 @@ export default function AdminCareersPage() {
     setDialogOpen(true);
   };
 
+  const filteredCareers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return careers.filter((career) => {
+      const matchesFaculty =
+        facultyFilter === "all" || career.facultyId === facultyFilter;
+      if (!query) return matchesFaculty;
+      const name = career.name.toLowerCase();
+      return matchesFaculty && name.includes(query);
+    });
+  }, [careers, search, facultyFilter]);
+
   if (loading) {
     return <div>Cargando carreras...</div>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">Carreras</h1>
           <p className="text-muted-foreground">
@@ -237,13 +300,39 @@ export default function AdminCareersPage() {
         </Dialog>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Listado de Carreras</CardTitle>
+      <Card className="border-muted/60 bg-white/90 shadow-sm">
+        <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Listado de Carreras</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {filteredCareers.length} carreras encontradas
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar carrera"
+              className="w-60"
+            />
+            <Select value={facultyFilter} onValueChange={setFacultyFilter}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Filtrar por facultad" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las facultades</SelectItem>
+                {faculties.map((faculty) => (
+                  <SelectItem key={faculty.id} value={faculty.id}>
+                    {faculty.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Carrera</TableHead>
@@ -252,16 +341,18 @@ export default function AdminCareersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {careers.map((career) => (
+              {filteredCareers.map((career) => (
                 <TableRow key={career.id}>
-                  <TableCell>{career.id}</TableCell>
-                  <TableCell>{career.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{career.id}</TableCell>
+                  <TableCell className="font-medium text-foreground">
+                    {career.name}
+                  </TableCell>
                   <TableCell>
                     <Select
                       value={career.facultyId || "none"}
                       onValueChange={(value) => handleUpdateFaculty(career.id, value === "none" ? null : value)}
                     >
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger className="w-72">
                         <SelectValue placeholder="Seleccionar facultad" />
                       </SelectTrigger>
                       <SelectContent>
@@ -275,7 +366,7 @@ export default function AdminCareersPage() {
                     </Select>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex gap-2 justify-end">
+                    <div className="flex items-center justify-end gap-2">
                       <Button
                         size="sm"
                         variant="outline"

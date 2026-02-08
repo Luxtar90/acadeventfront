@@ -22,9 +22,14 @@ interface Event {
   };
 }
 
+interface AttendanceRecord {
+  present: boolean;
+}
+
 export default function OrganizerDashboardPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const loadEvents = async () => {
@@ -35,6 +40,23 @@ export default function OrganizerDashboardPage() {
         if (!userId) return;
         const data = await fetchJson<Event[]>(`/events?organizerId=${userId}`);
         setEvents(data);
+        const attendanceEntries = await Promise.allSettled(
+          data.map(async (event) => {
+            const attendance = await fetchJson<AttendanceRecord[]>(
+              `/events/${event.id}/attendance`
+            );
+            const presentCount = attendance.filter((record) => record.present).length;
+            return [event.id, presentCount] as const;
+          })
+        );
+        const counts: Record<string, number> = {};
+        attendanceEntries.forEach((entry) => {
+          if (entry.status === "fulfilled") {
+            const [eventId, count] = entry.value;
+            counts[eventId] = count;
+          }
+        });
+        setAttendanceMap(counts);
       } catch {
       } finally {
         setLoading(false);
@@ -50,7 +72,8 @@ export default function OrganizerDashboardPage() {
   const totalAttendance = events.reduce(
     (sum, event) =>
       sum +
-      (event._count?.attendances ??
+      (attendanceMap[event.id] ??
+        event._count?.attendances ??
         event._count?.attendance ??
         event._count?.attendees ??
         0),
@@ -175,6 +198,7 @@ export default function OrganizerDashboardPage() {
                       </span>
                       <span className="rounded-full border bg-muted/30 px-2 py-1">
                         {(
+                          attendanceMap[event.id] ??
                           event._count?.attendances ??
                           event._count?.attendance ??
                           event._count?.attendees ??

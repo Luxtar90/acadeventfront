@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { fetchJson } from "@/lib/utils";
+import { useAlert } from "@/components/alert-provider";
 
 interface Speaker {
   id: string;
@@ -36,11 +37,13 @@ export default function AdminSpeakersPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Speaker | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { notify } = useAlert();
   const [form, setForm] = useState({
     fullName: "",
     bio: "",
     photoUrl: "",
   });
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     loadSpeakers();
@@ -51,7 +54,11 @@ export default function AdminSpeakersPage() {
       const data = await fetchJson<Speaker[]>("/speakers");
       setSpeakers(data);
     } catch (error) {
-      console.error("Error loading speakers:", error);
+      notify({
+        title: "No se pudieron cargar los ponentes",
+        message: "Intenta recargar la página.",
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -59,7 +66,11 @@ export default function AdminSpeakersPage() {
 
   const handleCreateSpeaker = async () => {
     if (!form.fullName.trim()) {
-      alert("Por favor ingrese el nombre completo del ponente");
+      notify({
+        title: "Datos incompletos",
+        message: "Ingresa el nombre completo del ponente.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -78,8 +89,17 @@ export default function AdminSpeakersPage() {
       setDialogOpen(false);
       setForm({ fullName: "", bio: "", photoUrl: "" });
       loadSpeakers();
+      notify({
+        title: "Ponente creado",
+        message: "El registro se guardó correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error creando ponente");
+      notify({
+        title: "No se pudo crear el ponente",
+        message: "Revisa la información e intenta nuevamente.",
+        variant: "error",
+      });
     } finally {
       setCreating(false);
     }
@@ -87,7 +107,11 @@ export default function AdminSpeakersPage() {
 
   const handleEditSpeaker = async () => {
     if (!editing || !form.fullName.trim()) {
-      alert("Por favor ingrese el nombre completo del ponente");
+      notify({
+        title: "Datos incompletos",
+        message: "Ingresa el nombre completo del ponente.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -107,8 +131,17 @@ export default function AdminSpeakersPage() {
       setEditing(null);
       setForm({ fullName: "", bio: "", photoUrl: "" });
       loadSpeakers();
+      notify({
+        title: "Ponente actualizado",
+        message: "Los cambios se guardaron correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error actualizando ponente");
+      notify({
+        title: "No se pudo actualizar el ponente",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     } finally {
       setCreating(false);
     }
@@ -124,8 +157,17 @@ export default function AdminSpeakersPage() {
         method: "DELETE",
       });
       loadSpeakers();
+      notify({
+        title: "Ponente eliminado",
+        message: "El registro fue eliminado correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error eliminando ponente");
+      notify({
+        title: "No se pudo eliminar el ponente",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     }
   };
 
@@ -145,13 +187,23 @@ export default function AdminSpeakersPage() {
     setDialogOpen(true);
   };
 
+  const filteredSpeakers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return speakers;
+    return speakers.filter((speaker) => {
+      const name = speaker.fullName.toLowerCase();
+      const bio = speaker.bio?.toLowerCase() ?? "";
+      return name.includes(query) || bio.includes(query);
+    });
+  }, [speakers, search]);
+
   if (loading) {
     return <div>Cargando ponentes...</div>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">Ponentes</h1>
           <p className="text-muted-foreground">
@@ -212,13 +264,24 @@ export default function AdminSpeakersPage() {
         </Dialog>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Listado de Ponentes</CardTitle>
+      <Card className="border-muted/60 bg-white/90 shadow-sm">
+        <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Listado de Ponentes</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {filteredSpeakers.length} ponentes encontrados
+            </p>
+          </div>
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar por nombre o biografía"
+            className="w-72"
+          />
         </CardHeader>
         <CardContent>
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Nombre</TableHead>
@@ -227,10 +290,12 @@ export default function AdminSpeakersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {speakers.map((speaker) => (
+              {filteredSpeakers.map((speaker) => (
                 <TableRow key={speaker.id}>
-                  <TableCell>{speaker.id}</TableCell>
-                  <TableCell>{speaker.fullName}</TableCell>
+                  <TableCell className="text-muted-foreground">{speaker.id}</TableCell>
+                  <TableCell className="font-medium text-foreground">
+                    {speaker.fullName}
+                  </TableCell>
                   <TableCell>
                     {speaker.bio ? (
                       <span className="text-sm text-muted-foreground">
@@ -244,7 +309,7 @@ export default function AdminSpeakersPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex gap-2 justify-end">
+                    <div className="flex items-center justify-end gap-2">
                       <Button
                         size="sm"
                         variant="outline"

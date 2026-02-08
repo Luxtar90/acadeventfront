@@ -16,6 +16,18 @@ const roleRedirects: Record<Role, string> = {
   SCANNER: "/scanner",
 };
 
+const normalizeRole = (role?: string): Role | null => {
+  if (!role) return null;
+  const upper = role.toUpperCase();
+  if (upper === "ORGANIZER") return "ORGANIZADOR";
+  if (upper === "ASSISTANT" || upper === "STUDENT") return "ASISTENTE";
+  if (upper === "ADMIN") return "ADMIN";
+  if (upper === "ORGANIZADOR") return "ORGANIZADOR";
+  if (upper === "ASISTENTE") return "ASISTENTE";
+  if (upper === "SCANNER") return "SCANNER";
+  return null;
+};
+
 export default function RoleGuard({
   allowedRoles,
   children,
@@ -35,9 +47,13 @@ export default function RoleGuard({
         return { allowed: false, redirectTo: "/auth/login" };
       }
       const user = JSON.parse(raw) as StoredUser;
-      if (!user?.roles || !user.roles.some(r => allowedRoles.includes(r as Role))) {
-        const primaryRole = user?.roles?.[0] as Role;
-        const target = primaryRole && roleRedirects[primaryRole] ? roleRedirects[primaryRole] : "/auth/login";
+      const normalizedRoles = (user?.roles ?? [])
+        .map((role) => normalizeRole(role))
+        .filter((role): role is Role => Boolean(role));
+      if (!normalizedRoles.some((role) => allowedRoles.includes(role))) {
+        const primaryRole = normalizedRoles[0];
+        const target =
+          primaryRole && roleRedirects[primaryRole] ? roleRedirects[primaryRole] : "/auth/login";
         return { allowed: false, redirectTo: target };
       }
       return { allowed: true, redirectTo: null };

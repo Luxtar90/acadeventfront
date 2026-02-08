@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchJson } from "@/lib/utils";
 import RoleGuard from "@/components/role-guard";
-import { Award, CalendarDays, QrCode, Sparkles, Ticket, UserCheck } from "lucide-react";
+import { Award, CalendarDays, Sparkles, Ticket, UserCheck } from "lucide-react";
 
 type Registration = {
   id: string;
@@ -17,9 +17,15 @@ type Registration = {
     startAt: string;
   };
   status: string;
-  qrCode?: {
-    qrToken: string;
-  };
+};
+
+type AttendanceRecord = {
+  userId: string;
+  present: boolean;
+};
+
+type QrCode = {
+  qrToken: string;
 };
 
 type Certificate = {
@@ -34,6 +40,10 @@ export default function AssistantDashboardPage() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [qrTokens, setQrTokens] = useState<Record<string, string>>({});
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, boolean>>({});
+  const buildQrImageUrl = (token: string) =>
+    `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(token)}`;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,6 +60,51 @@ export default function AssistantDashboardPage() {
 
         setRegistrations(regs);
         setCertificates(certs);
+        const attendanceEntries = await Promise.allSettled(
+          regs.map(async (registration) => {
+            const eventId = registration.event?.id;
+            if (!eventId) return null;
+            const attendance = await fetchJson<AttendanceRecord[]>(`/events/${eventId}/attendance`);
+            const attended = attendance.some(
+              (record) => record.userId === userId && record.present
+            );
+            return [registration.id, attended] as const;
+          })
+        );
+        const attendanceStatus: Record<string, boolean> = {};
+        attendanceEntries.forEach((entry) => {
+          if (entry.status === "fulfilled" && entry.value) {
+            const [registrationId, attended] = entry.value;
+            attendanceStatus[registrationId] = attended;
+          }
+        });
+        setAttendanceMap(attendanceStatus);
+        const qrEntries = await Promise.allSettled(
+          regs.map(async (registration) => {
+            const existing = await fetchJson<QrCode | null>(
+              `/qr-codes/registrations/${registration.id}`
+            );
+            if (existing?.qrToken) {
+              return [registration.id, existing.qrToken] as const;
+            }
+            if (registration.status === "INSCRITO") {
+              const created = await fetchJson<QrCode>(
+                `/qr-codes/registrations/${registration.id}`,
+                { method: "POST" }
+              );
+              return [registration.id, created.qrToken] as const;
+            }
+            return null;
+          })
+        );
+        const qrMap: Record<string, string> = {};
+        qrEntries.forEach((entry) => {
+          if (entry.status === "fulfilled" && entry.value) {
+            const [registrationId, qrToken] = entry.value;
+            qrMap[registrationId] = qrToken;
+          }
+        });
+        setQrTokens(qrMap);
       } catch {
         // Ignore
       } finally {
@@ -58,23 +113,6 @@ export default function AssistantDashboardPage() {
     };
     fetchData();
   }, []);
-
-  const generateQr = async (registrationId: string) => {
-    try {
-      await fetchJson(`/qr-codes/registrations/${registrationId}`, {
-        method: "POST",
-      });
-      // Refresh data
-      const raw = localStorage.getItem("acadevent_user");
-      const parsed = raw ? JSON.parse(raw) : null;
-      const userId = parsed?.id ?? parsed?.userId ?? parsed?._id ?? parsed?.user?.id;
-      if (!userId) return;
-      const regs = await fetchJson<Registration[]>(`/users/${userId}/registrations`);
-      setRegistrations(regs);
-    } catch (error) {
-      alert("Error generando QR");
-    }
-  };
 
   if (loading) {
     return <div className="p-8">Cargando...</div>;
@@ -192,27 +230,55 @@ export default function AssistantDashboardPage() {
                 registrations.map((registration) => (
                   <div
                     key={registration.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-muted/30 px-4 py-3"
+                    className="relative overflow-hidden rounded-2xl border bg-muted/30 px-4 py-3 shadow-sm"
                   >
-                    <div>
-                      <div className="font-medium">
-                        {registration.event?.title ?? "Evento sin título"}
+                    <div className="pointer-events-none absolute left-0 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border bg-background" />
+                    <div className="pointer-events-none absolute right-0 top-1/2 h-6 w-6 -translate-y-1/2 translate-x-1/2 rounded-full border bg-background" />
+                    <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+                      <div className="space-y-2">
+                        <div>
+                          <div className="font-medium">
+                            {registration.event?.title ?? "Evento sin título"}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Fecha:{" "}
+                            {registration.event?.startAt
+                              ? new Date(registration.event.startAt).toLocaleDateString("es-ES")
+                              : "Por confirmar"}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline">{registration.status}</Badge>
+                          {attendanceMap[registration.id] ? (
+                            <Badge className="bg-emerald-100 text-emerald-700">Asistido</Badge>
+                          ) : null}
+                          {qrTokens[registration.id] ? (
+                            <Badge variant="outline">QR listo</Badge>
+                          ) : registration.status === "INSCRITO" ? (
+                            <Badge variant="outline">QR pendiente</Badge>
+                          ) : null}
+                        </div>
+                        {qrTokens[registration.id] ? (
+                          <div className="text-xs text-muted-foreground">
+                            Código QR: {qrTokens[registration.id]}
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        Fecha:{" "}
-                        {registration.event?.startAt
-                          ? new Date(registration.event.startAt).toLocaleDateString("es-ES")
-                          : "Por confirmar"}
+                      <div className="flex items-center justify-center">
+                        {qrTokens[registration.id] ? (
+                          <div className="rounded-xl border bg-white/90 p-2 shadow-sm">
+                            <img
+                              src={buildQrImageUrl(qrTokens[registration.id])}
+                              alt="QR de acceso"
+                              className="h-[96px] w-[96px]"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex h-[96px] w-[96px] items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground">
+                            Sin QR
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Badge variant="outline">{registration.status}</Badge>
-                      {registration.status === 'INSCRITO' && (
-                        <Button size="sm" variant="outline" onClick={() => generateQr(registration.id)}>
-                          <QrCode className="h-4 w-4" />
-                          Generar QR
-                        </Button>
-                      )}
                     </div>
                   </div>
                 ))

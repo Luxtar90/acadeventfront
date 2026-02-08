@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -29,6 +37,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { fetchJson } from "@/lib/utils";
+import { useAlert } from "@/components/alert-provider";
 
 interface User {
   id: string;
@@ -68,6 +77,7 @@ export default function AdminUsersPage() {
   const [updating, setUpdating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const { notify } = useAlert();
   const [form, setForm] = useState<CreateUserForm>({
     fullName: "",
     email: "",
@@ -83,6 +93,10 @@ export default function AdminUsersPage() {
     facultyId: null as string | null,
     careerId: null as string | null,
   });
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+
+  const roleOptions = ["ADMIN", "ORGANIZER", "ASSISTANT", "SCANNER", "STUDENT"];
 
   useEffect(() => {
     loadData();
@@ -99,7 +113,11 @@ export default function AdminUsersPage() {
       setFaculties(facultiesData);
       setCareers(careersData);
     } catch (error) {
-      console.error("Error loading data:", error);
+      notify({
+        title: "No se pudieron cargar los usuarios",
+        message: "Intenta recargar la página.",
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -107,7 +125,11 @@ export default function AdminUsersPage() {
 
   const handleCreateUser = async () => {
     if (!form.fullName || !form.email || !form.password || form.roles.length === 0) {
-      alert("Por favor complete todos los campos requeridos");
+      notify({
+        title: "Datos incompletos",
+        message: "Completa los campos obligatorios y selecciona un rol.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -129,8 +151,17 @@ export default function AdminUsersPage() {
         careerId: null,
       });
       loadData();
+      notify({
+        title: "Usuario creado",
+        message: "El registro se guardó correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error creando usuario");
+      notify({
+        title: "No se pudo crear el usuario",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     } finally {
       setCreating(false);
     }
@@ -152,8 +183,17 @@ export default function AdminUsersPage() {
       });
 
       loadData();
+      notify({
+        title: "Rol actualizado",
+        message: "Los cambios se guardaron correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error actualizando rol");
+      notify({
+        title: "No se pudo actualizar el rol",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     }
   };
 
@@ -173,7 +213,11 @@ export default function AdminUsersPage() {
     if (!editing) return;
 
     if (!editForm.fullName.trim() || !editForm.email.trim()) {
-      alert("Por favor complete todos los campos requeridos");
+      notify({
+        title: "Datos incompletos",
+        message: "Completa los campos requeridos.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -188,8 +232,17 @@ export default function AdminUsersPage() {
       setEditDialogOpen(false);
       setEditing(null);
       loadData();
+      notify({
+        title: "Usuario actualizado",
+        message: "Los cambios se guardaron correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error actualizando usuario");
+      notify({
+        title: "No se pudo actualizar el usuario",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     } finally {
       setUpdating(false);
     }
@@ -203,8 +256,17 @@ export default function AdminUsersPage() {
         body: JSON.stringify({ facultyId }),
       });
       loadData();
+      notify({
+        title: "Facultad actualizada",
+        message: "La relación se guardó correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error actualizando facultad");
+      notify({
+        title: "No se pudo actualizar la facultad",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     }
   };
 
@@ -216,10 +278,30 @@ export default function AdminUsersPage() {
         body: JSON.stringify({ careerId }),
       });
       loadData();
+      notify({
+        title: "Carrera actualizada",
+        message: "La relación se guardó correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error actualizando carrera");
+      notify({
+        title: "No se pudo actualizar la carrera",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     }
   };
+
+  const filteredUsers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return users.filter((user) => {
+      const matchesRole = roleFilter === "all" || user.roles.includes(roleFilter);
+      if (!query) return matchesRole;
+      const name = user.fullName?.toLowerCase() ?? "";
+      const email = user.email?.toLowerCase() ?? "";
+      return matchesRole && (name.includes(query) || email.includes(query));
+    });
+  }, [users, search, roleFilter]);
 
   if (loading) {
     return <div>Cargando usuarios...</div>;
@@ -227,7 +309,7 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">Usuarios</h1>
           <p className="text-muted-foreground">
@@ -440,16 +522,41 @@ export default function AdminUsersPage() {
       </Dialog>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Listado de Usuarios</CardTitle>
+        <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Listado de Usuarios</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {filteredUsers.length} usuarios encontrados
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar por nombre o email"
+              className="w-64"
+            />
+            <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filtrar por rol" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los roles</SelectItem>
+                {roleOptions.map((role) => (
+                  <SelectItem key={role} value={role}>
+                    {role}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>ID</TableHead>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead>Usuario</TableHead>
                 <TableHead>Roles</TableHead>
                 <TableHead>Facultad</TableHead>
                 <TableHead>Carrera</TableHead>
@@ -457,15 +564,21 @@ export default function AdminUsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <TableRow key={user.id}>
-                  <TableCell>{user.id}</TableCell>
-                  <TableCell>{user.fullName}</TableCell>
-                  <TableCell>{user.email}</TableCell>
+                  <TableCell className="text-muted-foreground">{user.id}</TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <div className="font-medium text-foreground">
+                        {user.fullName || "Sin nombre"}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{user.email}</div>
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {user.roles.map((role) => (
-                        <Badge key={role} variant="outline">
+                        <Badge key={role} variant="outline" className="bg-muted/30">
                           {role}
                         </Badge>
                       ))}
@@ -476,7 +589,7 @@ export default function AdminUsersPage() {
                       value={user.facultyId || "none"}
                       onValueChange={(value) => handleUpdateFaculty(user.id, value === "none" ? null : value)}
                     >
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger className="w-52">
                         <SelectValue placeholder="Seleccionar facultad" />
                       </SelectTrigger>
                       <SelectContent>
@@ -494,7 +607,7 @@ export default function AdminUsersPage() {
                       value={user.careerId || "none"}
                       onValueChange={(value) => handleUpdateCareer(user.id, value === "none" ? null : value)}
                     >
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger className="w-48">
                         <SelectValue placeholder="Seleccionar carrera" />
                       </SelectTrigger>
                       <SelectContent>
@@ -508,7 +621,7 @@ export default function AdminUsersPage() {
                     </Select>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex gap-1 justify-end items-center">
+                    <div className="flex items-center justify-end gap-2">
                       <Button
                         size="sm"
                         variant="outline"
@@ -516,18 +629,26 @@ export default function AdminUsersPage() {
                       >
                         Editar
                       </Button>
-                      <div className="flex gap-1">
-                        {["ADMIN", "ORGANIZER", "ASSISTANT", "SCANNER", "STUDENT"].map((role) => (
-                          <Button
-                            key={role}
-                            size="sm"
-                            variant={user.roles.includes(role) ? "default" : "outline"}
-                            onClick={() => handleRoleChange(user.id, role)}
-                          >
-                            {role}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="outline">
+                            Roles
                           </Button>
-                        ))}
-                      </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuLabel>Asignar roles</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {roleOptions.map((role) => (
+                            <DropdownMenuCheckboxItem
+                              key={role}
+                              checked={user.roles.includes(role)}
+                              onCheckedChange={() => handleRoleChange(user.id, role)}
+                            >
+                              {role}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>

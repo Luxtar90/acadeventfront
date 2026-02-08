@@ -1,10 +1,71 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import RoleGuard from "@/components/role-guard";
 import { BookOpen, GraduationCap, Mic, Sparkles, Users } from "lucide-react";
+import { fetchJson } from "@/lib/utils";
+
+type SimpleItem = { id: string };
 
 export default function AdminDashboardPage() {
+  const [stats, setStats] = useState({
+    users: 0,
+    faculties: 0,
+    careers: 0,
+    speakers: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([
+      fetchJson<SimpleItem[]>("/users"),
+      fetchJson<SimpleItem[]>("/faculties"),
+      fetchJson<SimpleItem[]>("/careers"),
+      fetchJson<SimpleItem[]>("/speakers"),
+    ])
+      .then(([users, faculties, careers, speakers]) => {
+        if (!active) return;
+        setStats({
+          users: users.length,
+          faculties: faculties.length,
+          careers: careers.length,
+          speakers: speakers.length,
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setStats({
+          users: 0,
+          faculties: 0,
+          careers: 0,
+          speakers: 0,
+        });
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const formattedStats = useMemo(
+    () => ({
+      users: loading ? "..." : stats.users.toLocaleString("es-ES"),
+      faculties: loading ? "..." : stats.faculties.toLocaleString("es-ES"),
+      careers: loading ? "..." : stats.careers.toLocaleString("es-ES"),
+      speakers: loading ? "..." : stats.speakers.toLocaleString("es-ES"),
+    }),
+    [loading, stats]
+  );
+
   return (
     <RoleGuard allowedRoles={["ADMIN"]}>
       <div className="space-y-10">
@@ -29,7 +90,7 @@ export default function AdminDashboardPage() {
           {[
             {
               title: "Usuarios",
-              value: "1,520",
+              value: formattedStats.users,
               detail: "Usuarios registrados",
               href: "/admin/users",
               action: "Gestionar Usuarios",
@@ -37,7 +98,7 @@ export default function AdminDashboardPage() {
             },
             {
               title: "Facultades",
-              value: "8",
+              value: formattedStats.faculties,
               detail: "Facultades configuradas",
               href: "/admin/faculties",
               action: "Gestionar Facultades",
@@ -45,7 +106,7 @@ export default function AdminDashboardPage() {
             },
             {
               title: "Carreras",
-              value: "24",
+              value: formattedStats.careers,
               detail: "Carreras registradas",
               href: "/admin/careers",
               action: "Gestionar Carreras",
@@ -53,7 +114,7 @@ export default function AdminDashboardPage() {
             },
             {
               title: "Ponentes",
-              value: "15",
+              value: formattedStats.speakers,
               detail: "Ponentes disponibles",
               href: "/admin/speakers",
               action: "Gestionar Ponentes",

@@ -10,7 +10,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User, LogOut, Settings } from "lucide-react";
+import { fetchJson } from "@/lib/utils";
+import { User, LogOut, Settings, Bell } from "lucide-react";
+
+type Role = "ORGANIZADOR" | "ASISTENTE" | "ADMIN" | "SCANNER";
 
 interface User {
   id: string;
@@ -19,25 +22,48 @@ interface User {
   roles: string[];
 }
 
+interface NotificationItem {
+  id: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+interface NavItem {
+  href: string;
+  label: string;
+  roles?: Role[];
+}
+
 export default function Header() {
   const [user, setUser] = useState<User | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const isRegister = pathname?.startsWith("/auth/register");
-  const userRoles = user?.roles ?? [];
-  const hasRole = (roles?: string[]) =>
+  const normalizeRole = (role?: string): Role | null => {
+    if (!role) return null;
+    const upper = role.toUpperCase();
+    if (upper === "ORGANIZER") return "ORGANIZADOR";
+    if (upper === "ASSISTANT" || upper === "STUDENT") return "ASISTENTE";
+    if (upper === "ADMIN") return "ADMIN";
+    if (upper === "ORGANIZADOR") return "ORGANIZADOR";
+    if (upper === "ASISTENTE") return "ASISTENTE";
+    if (upper === "SCANNER") return "SCANNER";
+    return null;
+  };
+  const userRoles = (user?.roles ?? [])
+    .map((role) => normalizeRole(role))
+    .filter((role): role is Role => Boolean(role));
+  const hasRole = (roles?: Role[]) =>
     !roles || roles.some((role) => userRoles.includes(role));
-  const navItems = [
+  const navItems: NavItem[] = [
     { href: "/events", label: "Eventos" },
     { href: "/dashboard", label: "Dashboard", roles: ["ASISTENTE"] },
     { href: "/organizer/dashboard", label: "Organizador", roles: ["ORGANIZADOR"] },
     { href: "/admin/dashboard", label: "Admin", roles: ["ADMIN"] },
-    { href: "/scanner", label: "Scanner", roles: ["SCANNER"] },
-    {
-      href: "/notifications",
-      label: "Notificaciones",
-      roles: ["ADMIN", "ORGANIZADOR", "ASISTENTE", "SCANNER"],
-    },
+    { href: "/scanner", label: "Scanner", roles: ["SCANNER", "ORGANIZADOR"] },
   ];
 
   useEffect(() => {
@@ -71,6 +97,48 @@ export default function Header() {
     };
   }, [pathname]);
 
+  useEffect(() => {
+    if (!user?.id) {
+      setNotifications([]);
+      return;
+    }
+
+    let active = true;
+    setNotificationsLoading(true);
+    fetchJson<NotificationItem[]>(`/notifications/users/${user.id}`)
+      .then((data) => {
+        if (active) {
+          setNotifications(data);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setNotifications([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setNotificationsLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  const unreadCount = notifications.filter((notification) => !notification.isRead).length;
+  const formatNotificationDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    return date.toLocaleString("es-ES", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("acadevent_user");
     setUser(null);
@@ -103,26 +171,85 @@ export default function Header() {
         </nav>
         <div className="flex items-center gap-3">
           {user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  {user.fullName}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link href="/profile" className="flex items-center gap-2">
-                    <Settings className="h-4 w-4" />
-                    Editar perfil
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleLogout} className="flex items-center gap-2">
-                  <LogOut className="h-4 w-4" />
-                  Cerrar sesión
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-9 w-9 p-0">
+                    <Bell className="h-4 w-4" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 p-0">
+                  <div className="border-b px-4 py-3">
+                    <div className="text-sm font-semibold">Notificaciones</div>
+                    <div className="text-xs text-muted-foreground">
+                      {notificationsLoading
+                        ? "Cargando mensajes..."
+                        : `${notifications.length} mensajes`}
+                    </div>
+                  </div>
+                  <div className="max-h-80 overflow-auto">
+                    {notificationsLoading ? (
+                      <div className="px-4 py-4 text-sm text-muted-foreground">
+                        Preparando notificaciones...
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="px-4 py-4 text-sm text-muted-foreground">
+                        No tienes notificaciones por ahora.
+                      </div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <div
+                          key={notification.id}
+                          className="flex flex-col gap-1 border-b px-4 py-3 text-sm last:border-b-0"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium text-foreground">Mensaje</span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                notification.isRead
+                                  ? "bg-muted text-muted-foreground"
+                                  : "bg-primary/10 text-primary"
+                              }`}
+                            >
+                              {notification.isRead ? "Leída" : "Nueva"}
+                            </span>
+                          </div>
+                          <div className="text-muted-foreground">{notification.message}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatNotificationDate(notification.createdAt)}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    {user.fullName}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="flex items-center gap-2">
+                      <Settings className="h-4 w-4" />
+                      Editar perfil
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleLogout} className="flex items-center gap-2">
+                    <LogOut className="h-4 w-4" />
+                    Cerrar sesión
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           ) : (
             <div className="relative grid w-56 grid-cols-2 rounded-full bg-muted/40 p-1 text-sm">
               <span

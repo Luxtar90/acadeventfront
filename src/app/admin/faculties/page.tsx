@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { fetchJson } from "@/lib/utils";
+import { useAlert } from "@/components/alert-provider";
 
 interface Faculty {
   id: string;
@@ -33,7 +34,9 @@ export default function AdminFacultiesPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Faculty | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { notify } = useAlert();
   const [form, setForm] = useState({ name: "" });
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     loadFaculties();
@@ -44,7 +47,11 @@ export default function AdminFacultiesPage() {
       const data = await fetchJson<Faculty[]>("/faculties");
       setFaculties(data);
     } catch (error) {
-      console.error("Error loading faculties:", error);
+      notify({
+        title: "No se pudieron cargar las facultades",
+        message: "Intenta recargar la página.",
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -52,7 +59,11 @@ export default function AdminFacultiesPage() {
 
   const handleCreateFaculty = async () => {
     if (!form.name.trim()) {
-      alert("Por favor ingrese el nombre de la facultad");
+      notify({
+        title: "Datos incompletos",
+        message: "Ingresa el nombre de la facultad.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -67,8 +78,17 @@ export default function AdminFacultiesPage() {
       setDialogOpen(false);
       setForm({ name: "" });
       loadFaculties();
+      notify({
+        title: "Facultad creada",
+        message: "El registro se guardó correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error creando facultad");
+      notify({
+        title: "No se pudo crear la facultad",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     } finally {
       setCreating(false);
     }
@@ -76,7 +96,11 @@ export default function AdminFacultiesPage() {
 
   const handleEditFaculty = async () => {
     if (!editing || !form.name.trim()) {
-      alert("Por favor ingrese el nombre de la facultad");
+      notify({
+        title: "Datos incompletos",
+        message: "Ingresa el nombre de la facultad.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -92,8 +116,17 @@ export default function AdminFacultiesPage() {
       setEditing(null);
       setForm({ name: "" });
       loadFaculties();
+      notify({
+        title: "Facultad actualizada",
+        message: "Los cambios se guardaron correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error actualizando facultad");
+      notify({
+        title: "No se pudo actualizar la facultad",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     } finally {
       setCreating(false);
     }
@@ -109,8 +142,17 @@ export default function AdminFacultiesPage() {
         method: "DELETE",
       });
       loadFaculties();
+      notify({
+        title: "Facultad eliminada",
+        message: "El registro fue eliminado correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error eliminando facultad");
+      notify({
+        title: "No se pudo eliminar la facultad",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     }
   };
 
@@ -126,13 +168,19 @@ export default function AdminFacultiesPage() {
     setDialogOpen(true);
   };
 
+  const filteredFaculties = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return faculties;
+    return faculties.filter((faculty) => faculty.name.toLowerCase().includes(query));
+  }, [faculties, search]);
+
   if (loading) {
     return <div>Cargando facultades...</div>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">Facultades</h1>
           <p className="text-muted-foreground">
@@ -174,13 +222,24 @@ export default function AdminFacultiesPage() {
         </Dialog>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Listado de Facultades</CardTitle>
+      <Card className="border-muted/60 bg-white/90 shadow-sm">
+        <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Listado de Facultades</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {filteredFaculties.length} facultades encontradas
+            </p>
+          </div>
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar facultad"
+            className="w-64"
+          />
         </CardHeader>
         <CardContent>
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Nombre</TableHead>
@@ -188,12 +247,14 @@ export default function AdminFacultiesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {faculties.map((faculty) => (
+              {filteredFaculties.map((faculty) => (
                 <TableRow key={faculty.id}>
-                  <TableCell>{faculty.id}</TableCell>
-                  <TableCell>{faculty.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{faculty.id}</TableCell>
+                  <TableCell className="font-medium text-foreground">
+                    {faculty.name}
+                  </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex gap-2 justify-end">
+                    <div className="flex items-center justify-end gap-2">
                       <Button
                         size="sm"
                         variant="outline"

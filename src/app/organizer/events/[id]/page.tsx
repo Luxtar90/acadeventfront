@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
 import { fetchJson } from "@/lib/utils";
+import { useAlert } from "@/components/alert-provider";
 
 interface Faculty {
   id: string;
@@ -67,6 +68,7 @@ export default function OrganizerEditEventPage() {
   const [fetchLoading, setFetchLoading] = useState(true);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
+  const { notify } = useAlert();
   const [form, setForm] = useState<EventForm>({
     title: "",
     description: "",
@@ -88,7 +90,11 @@ export default function OrganizerEditEventPage() {
         const data = await fetchJson<Faculty[]>("/faculties");
         setFaculties(data);
       } catch {
-        // Ignore
+        notify({
+          title: "No se pudieron cargar las facultades",
+          message: "Intenta recargar la página.",
+          variant: "error",
+        });
       }
     };
 
@@ -97,7 +103,11 @@ export default function OrganizerEditEventPage() {
         const data = await fetchJson<Speaker[]>("/speakers");
         setSpeakers(data);
       } catch {
-        // Ignore
+        notify({
+          title: "No se pudieron cargar los ponentes",
+          message: "Intenta recargar la página.",
+          variant: "error",
+        });
       }
     };
 
@@ -122,7 +132,11 @@ export default function OrganizerEditEventPage() {
           speakerIds: event.speakers?.map((speaker) => speaker.id) || [],
         });
       } catch (error) {
-        alert("Error cargando evento");
+        notify({
+          title: "No se pudo cargar el evento",
+          message: "Intenta nuevamente desde el listado.",
+          variant: "error",
+        });
         router.push("/organizer/dashboard");
       } finally {
         setFetchLoading(false);
@@ -160,9 +174,18 @@ export default function OrganizerEditEventPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      notify({
+        title: "Evento actualizado",
+        message: "Los cambios se guardaron correctamente.",
+        variant: "success",
+      });
       router.push("/organizer/dashboard");
     } catch (error) {
-      alert("Error actualizando evento");
+      notify({
+        title: "No se pudo actualizar el evento",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }

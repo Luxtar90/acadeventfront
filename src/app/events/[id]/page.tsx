@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchJson } from "@/lib/utils";
 import { useState, useEffect, use } from "react";
+import { useAlert } from "@/components/alert-provider";
 
 type Speaker = {
   id: string;
@@ -59,6 +60,7 @@ async function getEvent(id: string) {
 function RegisterButton({ eventId }: { eventId: string }) {
   const [isRegistered, setIsRegistered] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { notify } = useAlert();
 
   useEffect(() => {
     const checkRegistration = async () => {
@@ -93,8 +95,17 @@ function RegisterButton({ eventId }: { eventId: string }) {
         body: JSON.stringify({ userId }),
       });
       setIsRegistered(true);
+      notify({
+        title: "Inscripción confirmada",
+        message: "Tu registro se completó correctamente.",
+        variant: "success",
+      });
     } catch (error) {
-      alert("Error al registrarse");
+      notify({
+        title: "No se pudo registrar",
+        message: "Intenta de nuevo en unos segundos.",
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
