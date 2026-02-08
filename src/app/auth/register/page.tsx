@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchJson } from "@/lib/utils";
+import { apiBaseUrl, fetchJson } from "@/lib/utils";
+import { useAlert } from "@/components/alert-provider";
 
 type Faculty = {
   id: string;
@@ -27,6 +28,7 @@ type Career = {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { notify } = useAlert();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,7 +38,33 @@ export default function RegisterPage() {
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [careers, setCareers] = useState<Career[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const requestJson = async <T,>(path: string, init?: RequestInit) => {
+    const baseUrl = apiBaseUrl();
+    const url = baseUrl ? `${baseUrl}${path}` : `/api${path}`;
+    const res = await fetch(url, {
+      ...init,
+      cache: "no-store",
+    });
+    const text = await res.text();
+    let data: T | null = null;
+    if (text) {
+      try {
+        data = JSON.parse(text) as T;
+      } catch {
+        data = null;
+      }
+    }
+    if (!res.ok) {
+      const message =
+        typeof (data as { message?: string | string[] } | null)?.message === "string"
+          ? (data as { message?: string }).message
+          : Array.isArray((data as { message?: string[] } | null)?.message)
+            ? (data as { message?: string[] }).message?.join(", ")
+            : `API error ${res.status}`;
+      throw new Error(message);
+    }
+    return data as T;
+  };
 
   useEffect(() => {
     const loadOptions = async () => {
@@ -59,17 +87,24 @@ export default function RegisterPage() {
     const trimmedName = fullName.trim();
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedName || !trimmedEmail || !password) {
-      setError("Completa los datos obligatorios.");
+      notify({
+        title: "Datos incompletos",
+        message: "Completa los datos obligatorios.",
+        variant: "warning",
+      });
       return;
     }
     if (password !== passwordConfirm) {
-      setError("Las contraseñas no coinciden.");
+      notify({
+        title: "Contraseña no coincide",
+        message: "Las contraseñas no coinciden.",
+        variant: "warning",
+      });
       return;
     }
     setLoading(true);
-    setError(null);
     try {
-      await fetchJson("/auth/register", {
+      await requestJson("/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -81,9 +116,20 @@ export default function RegisterPage() {
           careerId,
         }),
       });
+      notify({
+        title: "Cuenta creada",
+        message: "Ya puedes iniciar sesión.",
+        variant: "success",
+      });
       router.push("/auth/login");
-    } catch {
-      setError("No se pudo registrar el usuario.");
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message ? err.message : "No se pudo registrar el usuario.";
+      notify({
+        title: "No se pudo registrar",
+        message,
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -228,9 +274,6 @@ export default function RegisterPage() {
               <Button className="h-11 w-full" onClick={handleRegister} disabled={loading}>
                 {loading ? "Registrando..." : "Registrarme"}
               </Button>
-              {error ? (
-                <div className="text-sm text-destructive">{error}</div>
-              ) : null}
               <div className="text-center text-sm text-muted-foreground">
                 <Link href="/auth/login" className="hover:underline">
                   Ya tengo cuenta

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchJson } from "@/lib/utils";
+import { apiBaseUrl, fetchJson } from "@/lib/utils";
+import { useAlert } from "@/components/alert-provider";
 
 type User = {
   id: string;
@@ -22,21 +23,51 @@ type AuthResponse = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { notify } = useAlert();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const requestJson = async <T,>(path: string, init?: RequestInit) => {
+    const baseUrl = apiBaseUrl();
+    const url = baseUrl ? `${baseUrl}${path}` : `/api${path}`;
+    const res = await fetch(url, {
+      ...init,
+      cache: "no-store",
+    });
+    const text = await res.text();
+    let data: T | null = null;
+    if (text) {
+      try {
+        data = JSON.parse(text) as T;
+      } catch {
+        data = null;
+      }
+    }
+    if (!res.ok) {
+      const message =
+        typeof (data as { message?: string | string[] } | null)?.message === "string"
+          ? (data as { message?: string }).message
+          : Array.isArray((data as { message?: string[] } | null)?.message)
+            ? (data as { message?: string[] }).message?.join(", ")
+            : `API error ${res.status}`;
+      throw new Error(message);
+    }
+    return data as T;
+  };
 
   const handleLogin = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail || !password) {
-      setError("Completa el correo y la contraseña.");
+      notify({
+        title: "Datos incompletos",
+        message: "Completa el correo y la contraseña.",
+        variant: "warning",
+      });
       return;
     }
     setLoading(true);
-    setError(null);
     try {
-      const response = await fetchJson<AuthResponse>("/auth/login", {
+      const response = await requestJson<AuthResponse>("/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -45,6 +76,11 @@ export default function LoginPage() {
         }),
       });
       localStorage.setItem("acadevent_user", JSON.stringify(response.user));
+      notify({
+        title: "Sesión iniciada",
+        message: "Bienvenido de nuevo.",
+        variant: "success",
+      });
       const { roles } = response.user;
       if (roles.includes("ADMIN")) {
         router.push("/admin/dashboard");
@@ -59,8 +95,14 @@ export default function LoginPage() {
         return;
       }
       router.push("/dashboard");
-    } catch {
-      setError("No se pudo conectar con el servidor.");
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message ? err.message : "No se pudo iniciar sesión.";
+      notify({
+        title: "No se pudo iniciar sesión",
+        message,
+        variant: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -131,7 +173,6 @@ export default function LoginPage() {
             <Button className="h-11 w-full" onClick={handleLogin} disabled={loading}>
               {loading ? "Ingresando..." : "Ingresar"}
             </Button>
-            {error ? <div className="text-sm text-destructive">{error}</div> : null}
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <Link href="/auth/register" className="hover:underline">
                 Crear cuenta

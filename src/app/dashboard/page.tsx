@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchJson } from "@/lib/utils";
+import { apiBaseUrl, fetchJson } from "@/lib/utils";
 import RoleGuard from "@/components/role-guard";
 import { Award, CalendarDays, Sparkles, Ticket, UserCheck } from "lucide-react";
 
@@ -30,10 +30,13 @@ type QrCode = {
 
 type Certificate = {
   id: string;
-  event: {
+  eventId?: string;
+  event?: {
     title: string;
+    id?: string;
   };
   verificationCode: string;
+  pdfUrl?: string | null;
 };
 
 export default function AssistantDashboardPage() {
@@ -44,6 +47,11 @@ export default function AssistantDashboardPage() {
   const [attendanceMap, setAttendanceMap] = useState<Record<string, boolean>>({});
   const buildQrImageUrl = (token: string) =>
     `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(token)}`;
+  const buildCertificateUrl = (certificateId: string) => {
+    const base = apiBaseUrl();
+    const path = `/certificates/${certificateId}/download`;
+    return base ? `${base}${path}` : `/api${path}`;
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -59,7 +67,6 @@ export default function AssistantDashboardPage() {
         ]);
 
         setRegistrations(regs);
-        setCertificates(certs);
         const attendanceEntries = await Promise.allSettled(
           regs.map(async (registration) => {
             const eventId = registration.event?.id;
@@ -79,6 +86,32 @@ export default function AssistantDashboardPage() {
           }
         });
         setAttendanceMap(attendanceStatus);
+        const certificatesByEvent = new Set(
+          certs.map((certificate) => certificate.event?.id ?? certificate.eventId).filter(Boolean)
+        );
+        const generatedEntries = await Promise.allSettled(
+          regs
+            .filter((registration) => attendanceStatus[registration.id])
+            .filter((registration) => registration.event?.id)
+            .filter((registration) => !certificatesByEvent.has(registration.event.id))
+            .map((registration) =>
+              fetchJson<Certificate>(
+                `/events/${registration.event.id}/certificates/${userId}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({}),
+                }
+              )
+            )
+        );
+        const allCertificates = [...certs];
+        generatedEntries.forEach((entry) => {
+          if (entry.status === "fulfilled") {
+            allCertificates.push(entry.value);
+          }
+        });
+        setCertificates(allCertificates);
         const qrEntries = await Promise.allSettled(
           regs.map(async (registration) => {
             const existing = await fetchJson<QrCode | null>(
@@ -127,6 +160,25 @@ export default function AssistantDashboardPage() {
         (a, b) =>
           new Date(a.event.startAt).getTime() - new Date(b.event.startAt).getTime()
       )[0] ?? null;
+  const registrationTitleByEventId = registrations.reduce<Record<string, string>>(
+    (acc, registration) => {
+      if (registration.event?.id) {
+        acc[registration.event.id] = registration.event.title;
+      }
+      return acc;
+    },
+    {}
+  );
+  const resolveCertificateTitle = (certificate: Certificate) => {
+    if (certificate.event?.title) {
+      return certificate.event.title;
+    }
+    const eventId = certificate.event?.id ?? certificate.eventId;
+    if (eventId && registrationTitleByEventId[eventId]) {
+      return registrationTitleByEventId[eventId];
+    }
+    return "Evento sin título";
+  };
   return (
     <RoleGuard allowedRoles={["ASISTENTE"]}>
       <div className="space-y-10">
@@ -304,14 +356,25 @@ export default function AssistantDashboardPage() {
                     className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-muted/30 px-4 py-3"
                   >
                     <div>
-                      <div className="font-medium">{certificate.event.title}</div>
+                      <div className="font-medium">{resolveCertificateTitle(certificate)}</div>
                       <div className="text-sm text-muted-foreground">
                         Código: {certificate.verificationCode}
                       </div>
                     </div>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/verify?code=${certificate.verificationCode}`}>Verificar</Link>
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" asChild>
+                        <a
+                          href={buildCertificateUrl(certificate.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Descargar PDF
+                        </a>
+                      </Button>
+                      <Button size="sm" variant="outline" asChild>
+                        <Link href={`/verify?code=${certificate.verificationCode}`}>Verificar</Link>
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
