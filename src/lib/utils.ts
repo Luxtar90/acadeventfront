@@ -6,10 +6,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function apiBaseUrl() {
-  const raw = process.env.NEXT_PUBLIC_API_BASE_URL ?? ""
-  if (!raw) {
-    return ""
-  }
+  const raw =
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    "https://acadeventfrontfinal-2vvt3hbx7-luxs-projects-7904e8a4.vercel.app"
   const trimmed = raw.replace(/\/$/, "")
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     return trimmed
