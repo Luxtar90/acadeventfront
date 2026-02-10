@@ -6,7 +6,15 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function apiBaseUrl() {
-  return process.env.NEXT_PUBLIC_API_BASE_URL ?? ""
+  const raw = process.env.NEXT_PUBLIC_API_BASE_URL ?? ""
+  if (!raw) {
+    return ""
+  }
+  const trimmed = raw.replace(/\/$/, "")
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed
+  }
+  return `https://${trimmed}`
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit) {
