@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const rawBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "https://acadeventfrontfinal-2vvt3hbx7-luxs-projects-7904e8a4.vercel.app";
+  "https://acadeventfrontfinal.vercel.app";
 const normalizedBaseUrl = rawBaseUrl.replace(/\/$/, "");
 const apiBaseUrl = normalizedBaseUrl.startsWith("http")
   ? normalizedBaseUrl
